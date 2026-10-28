@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Balance &amp; Progression Studio</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>Balance &amp; Progression Studio</h1>
+  <div class="topbar-actions">
+    <button id="exportAllJson" title="Экспорт всех данных в JSON (Ctrl+S)">Экспорт JSON</button>
+    <button id="themeToggle" title="Тёмная / светлая тема (Alt+T)">🌓</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="import" role="tab">1. Импорт</button>
+  <button class="tab" data-tab="table" role="tab">2. Таблица</button>
+  <button class="tab" data-tab="ttk" role="tab">3. Урон / TTK</button>
+  <button class="tab" data-tab="progression" role="tab">4. Прогрессия</button>
+  <button class="tab" data-tab="loot" role="tab">5. Лут</button>
+  <button class="tab" data-tab="audit" role="tab">Аудит</button>
+  <button class="tab" data-tab="inflation" role="tab">Инфляция</button>
+</nav>
+
+<main>
+  <!-- 1. Импорт -->
+  <section id="tab-import" class="panel active">
+    <h2>Импорт данных</h2>
+    <div class="row">
+      <label>Набор данных:
+        <select id="importTarget">
+          <option value="units">Юниты (id, name, hp, attack, defense, cost)</option>
+          <option value="loot">Лут (id, table_id, item, chance)</option>
+        </select>
+      </label>
+      <label>Режим:
+        <select id="importMode">
+          <option value="replace">Заменить</option>
+          <option value="append">Добавить к текущим</option>
+        </select>
+      </label>
+    </div>
+    <div id="dropZone" class="dropzone" tabindex="0">
+      <p>Перетащите CSV или JSON сюда<br>или</p>
+      <label class="btn">Выбрать файл<input type="file" id="fileInput" accept=".csv,.json,text/csv,application/json" hidden></label>
+    </div>
+    <div class="row">
+      <button id="loadSampleUnits">Загрузить пример юнитов</button>
+      <button id="loadSampleLoot">Загрузить пример лута</button>
+    </div>
+    <div id="importResult"></div>
+    <details class="help">
+      <summary>Формат файлов</summary>
+      <p><b>Юниты:</b> обязательные колонки <code>id,name,hp,attack,defense,cost</code>; необязательные <code>attack_speed</code> (ударов/с, по умолчанию 1), <code>crit_chance</code> (0…1), <code>crit_mult</code> (≥1).</p>
+      <p><b>Лут:</b> <code>id,table_id,item,chance</code> (шанс в процентах), необязательно <code>rarity</code>. Сумма шансов в каждой <code>table_id</code> должна быть 100%.</p>
+      <p>Разделитель — запятая или точка с запятой (определяется автоматически). JSON — массив объектов с теми же полями.</p>
+    </details>
+  </section>
+
+  <!-- 2. Таблица -->
+  <section id="tab-table" class="panel">
+    <h2>Редактор таблицы</h2>
+    <div class="row">
+      <label>Набор:
+        <select id="tableTarget">
+          <option value="units">Юниты</option>
+          <option value="loot">Лут</option>
+        </select>
+      </label>
+      <button id="addRow">+ Строка</button>
+      <button id="addColumn">+ Колонка</button>
+      <input id="tableFilter" type="search" placeholder="Фильтр…">
+      <button id="exportTableCsv">Экспорт CSV</button>
+      <button id="exportTableJson">Экспорт JSON</button>
+      <button id="clearTable" class="danger">Очистить</button>
+    </div>
+    <p class="muted" id="saveStatus">Изменения сохраняются автоматически в localStorage.</p>
+    <div class="table-wrap"><table id="editTable" class="grid"></table></div>
+  </section>
+
+  <!-- 3. TTK -->
+  <section id="tab-ttk" class="panel">
+    <h2>Калькулятор урона / TTK</h2>
+    <div class="formula">
+      урон = max(атака − защита, атака × <span class="var">minRatio</span>) × <span class="var">множитель</span>;
+      ожидаемый = урон × (1 + шанс_крита × (крит_множ − 1));
+      удары = ⌈HP / урон⌉; TTK = (удары − 1) / скорость_атаки
+    </div>
+    <div class="row">
+      <label>Атакующий <select id="ttkAttacker"></select></label>
+      <label>Цель <select id="ttkTarget"></select></label>
+    </div>
+    <div class="row">
+      <label>Множитель <input id="ttkMult" type="number" step="0.05" value="1"></label>
+      <label>minRatio <input id="ttkMinRatio" type="number" step="0.05" min="0" max="1" value="0.1"></label>
+      <label>Шанс крита (по умолч.) <input id="ttkCrit" type="number" step="0.05" min="0" max="1" value="0"></label>
+      <label>Крит-множ. (по умолч.) <input id="ttkCritMult" type="number" step="0.1" min="1" value="2"></label>
+    </div>
+    <p class="muted">Если у юнита заданы колонки <code>crit_chance</code>/<code>crit_mult</code>/<code>attack_speed</code>, используются они.</p>
+    <div id="ttkResult" class="cards"></div>
+    <h3>Матрица TTK (секунды, ожидаемое значение)</h3>
+    <p class="muted">Строка — атакующий, столбец — цель. Чем темнее, тем дольше бой.</p>
+    <div class="table-wrap"><table id="ttkMatrix" class="grid matrix"></table></div>
+    <button id="exportTtk">Экспорт матрицы CSV</button>
+  </section>
+
+  <!-- 4. Прогрессия -->
+  <section id="tab-progression" class="panel">
+    <h2>Кривая прогрессии</h2>
+    <div class="formula">
+      опыт_до_след(L) = round(<span class="var">A</span> × L<sup><span class="var">B</span></sup> + <span class="var">C</span> × L);
+      стат(L) = round(<span class="var">база</span> × (1 + <span class="var">g</span>)<sup>L−1</sup>)
+    </div>
+    <div class="row">
+      <label>A <input id="pA" type="number" step="10" value="100"></label>
+      <label>B (степень) <input id="pB" type="number" step="0.1" value="1.5"></label>
+      <label>C (линейная) <input id="pC" type="number" step="5" value="0"></label>
+      <label>Макс. уровень <input id="pMax" type="number" min="2" max="200" value="30"></label>
+      <label>Стат база <input id="pStatBase" type="number" value="100"></label>
+      <label>Рост g <input id="pStatGrowth" type="number" step="0.01" value="0.08"></label>
+    </div>
+    <div class="row">
+      <button data-preset="linear">Пресет: линейная</button>
+      <button data-preset="poly">Пресет: степенная</button>
+      <button data-preset="steep">Пресет: крутая</button>
+      <button id="exportProgCsv">Экспорт CSV</button>
+      <button id="exportProgJson">Экспорт JSON</button>
+    </div>
+    <div class="chart-box"><canvas id="progChart"></canvas></div>
+    <div class="table-wrap short"><table id="progTable" class="grid"></table></div>
+  </section>
+
+  <!-- 5. Лут -->
+  <section id="tab-loot" class="panel">
+    <h2>Проверка лута</h2>
+    <p class="muted">Шансы в процентах. Для каждой таблицы дропа (<code>table_id</code>) сумма должна быть 100% (допуск ±<span id="lootTolLabel">0.01</span>).</p>
+    <div class="row">
+      <label>Допуск <input id="lootTol" type="number" step="0.01" min="0" value="0.01"></label>
+      <button id="normalizeLoot">Нормализовать до 100%</button>
+      <button id="exportLootReport">Экспорт отчёта CSV</button>
+      <button id="exportLootJson">Экспорт лута JSON</button>
+    </div>
+    <div id="lootSummary" class="cards"></div>
+    <div id="lootTables"></div>
+    <h3>Симуляция дропов</h3>
+    <div class="row">
+      <label>Таблица <select id="simTable"></select></label>
+      <label>Кол-во дропов <input id="simN" type="number" value="10000" min="1" max="1000000"></label>
+      <button id="runSim">Симулировать</button>
+    </div>
+    <div class="table-wrap"><table id="simResult" class="grid"></table></div>
+  </section>
+
+  <!-- Аудит (доп.) -->
+  <section id="tab-audit" class="panel">
+    <h2>Аудит баланса</h2>
+    <div class="formula">
+      сила = средний DPS против остальных юнитов × HP; эффективность = сила / цена;
+      z = (эфф − среднее) / σ. z &gt; <span class="var">k</span> → доминирующий, z &lt; −<span class="var">k</span> → бесполезный
+    </div>
+    <div class="row"><label>Порог k <input id="auditK" type="number" step="0.1" value="1"></label></div>
+    <div class="table-wrap"><table id="auditTable" class="grid"></table></div>
+    <div class="chart-box"><canvas id="auditChart"></canvas></div>
+  </section>
+
+  <!-- Инфляция (доп.) -->
+  <section id="tab-inflation" class="panel">
+    <h2>Симулятор инфляции</h2>
+    <div class="formula">
+      запас<sub>t</sub> = max(0, запас<sub>t−1</sub> + доход × (1 + рост)<sup>t−1</sup> − (фикс_сток + запас<sub>t−1</sub> × %_сток))
+    </div>
+    <div class="row">
+      <label>Стартовый запас <input id="iStart" type="number" value="1000"></label>
+      <label>Доход за шаг <input id="iIncome" type="number" value="500"></label>
+      <label>Рост дохода <input id="iGrowth" type="number" step="0.01" value="0.03"></label>
+      <label>Фикс. сток <input id="iSinkFixed" type="number" value="300"></label>
+      <label>% сток от запаса <input id="iSinkPct" type="number" step="0.01" value="0.05"></label>
+      <label>Шагов <input id="iSteps" type="number" value="50" min="1" max="1000"></label>
+    </div>
+    <div id="inflSummary" class="cards"></div>
+    <div class="chart-box"><canvas id="inflChart"></canvas></div>
+  </section>
+</main>
+
+<footer class="muted">
+  Горячие клавиши: <kbd>Alt</kbd>+<kbd>1…7</kbd> — вкладки, <kbd>Ctrl</kbd>+<kbd>S</kbd> — экспорт JSON, <kbd>Alt</kbd>+<kbd>T</kbd> — тема, <kbd>Alt</kbd>+<kbd>N</kbd> — новая строка.
+</footer>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="js/formulas.js"></script>
+<script src="js/data.js"></script>
+<script src="js/samples.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
